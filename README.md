@@ -6,7 +6,7 @@
 
 [Zeqing Xia](https://xiazeqing.github.io/)<sup>*</sup> &nbsp;·&nbsp;
 [Bojun Xiong](https://ymxbj.github.io/)<sup>*</sup> &nbsp;·&nbsp;
-[Zhouhui Lian](mailto:lianzhouhui@pku.edu.cn)<sup>†</sup>
+[Zhouhui Lian](https://www.icst.pku.edu.cn/zlian/)<sup>†</sup>
 
 Wangxuan Institute of Computer Technology, Peking University
 
@@ -237,9 +237,7 @@ If you have any questions, please contact xiongbojun@pku.edu.cn.
 
 ## Acknowledgments
 
-This codebase reimplements the reconstruction pipeline introduced by
-Xia, Xiong, and Lian in their CVPR 2023 paper. We thank the authors for
-their work. This work was supported by National Language Committee of
-China (Grant No.: ZDI135-130), Center For Chinese Font Design and
-Research, and Key Laboratory of Science, Technology and Standard in
-Press Industry (Key Laboratory of Intelligent Press Media Technology).
+This work was supported by National Language Committee of China (Grant
+No.: ZDI135-130), Center For Chinese Font Design and Research, and Key
+Laboratory of Science, Technology and Standard in Press Industry (Key
+Laboratory of Intelligent Press Media Technology).
