@@ -214,7 +214,7 @@ python3 -m VecFontSDF.train \
 
 ## Citation
 
-If you find this work useful in your research, please cite the original paper:
+If you find this work useful in your research, please consider citing our paper:
 
 ```bibtex
 @InProceedings{Xia_2023_CVPR,
