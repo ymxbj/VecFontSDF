@@ -1,7 +1,7 @@
 """Training entry point for VecFontSDF reconstruction.
 
 Usage:
-    python -m VecFontSDF.train --img_path ./data/img --sdf_path ./data/sdf \
+    python3 -m VecFontSDF.train --img_path ./data/img --sdf_path ./data/sdf \
                                --font_list ./data/font_list.txt
 """
 

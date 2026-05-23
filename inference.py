@@ -1,7 +1,7 @@
 """Load a trained VecFontSDF and reconstruct a glyph image.
 
 Usage:
-    python -m VecFontSDF.inference \
+    python3 -m VecFontSDF.inference \
         --ckpt experiments/vecfontsdf_recon/checkpoints/latest.pth \
         --input some_glyph.png \
         --out_dir ./recon_out
