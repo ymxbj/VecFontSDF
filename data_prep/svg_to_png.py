@@ -8,7 +8,7 @@ Requires `cairosvg` for SVG rasterization:
     pip install cairosvg
 
 Usage:
-    python -m VecFontSDF.data_prep.svg_to_png \
+    python3 data_prep/svg_to_png.py \
         --svg_root  /path/to/svg \
         --out_root  /path/to/img \
         --image_size 128 \

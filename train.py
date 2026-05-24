@@ -1,8 +1,8 @@
 """Training entry point for VecFontSDF reconstruction.
 
 Usage:
-    python3 -m VecFontSDF.train --img_path ./data/img --sdf_path ./data/sdf \
-                               --font_list ./data/font_list.txt
+    python3 train.py --img_path ./data/img --sdf_path ./data/sdf \
+                     --font_list ./data/font_list.txt
 """
 
 import os
@@ -13,10 +13,10 @@ import torch
 import torch.nn as nn
 from torchvision.utils import save_image
 
-from .dataloader import build_loaders
-from .losses import build_grid, compute_losses
-from .model import VecFontSDF
-from .options import get_recon_parser
+from dataloader import build_loaders
+from losses import build_grid, compute_losses
+from model import VecFontSDF
+from options import get_recon_parser
 
 
 def cycle(loader):

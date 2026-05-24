@@ -13,7 +13,7 @@ on the contours.
 import math
 from typing import List, Optional
 
-from .geometry import EPS, Pos, QuadraticBezier, StraightLine
+from geometry import EPS, Pos, QuadraticBezier, StraightLine
 
 
 class Contour:

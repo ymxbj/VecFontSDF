@@ -6,7 +6,7 @@ directory containing `*.svg`, write `<output>/<font>/sdf/<codepoint>_grid.npy`
 dataloader will transpose it back to (row, col) at load time).
 
 Usage:
-    python -m VecFontSDF.data_prep.svg_to_grid_sdf \
+    python3 data_prep/svg_to_grid_sdf.py \
         --svg_root  /path/to/svg \
         --out_root  /path/to/sdf \
         --image_size 128 \
@@ -20,8 +20,8 @@ from typing import List, Tuple
 
 import numpy as np
 
-from .geometry import Pos
-from .glyph import Glyph
+from geometry import Pos
+from glyph import Glyph
 
 
 def compute_grid_sdf(glyph: Glyph, image_size: int) -> np.ndarray:

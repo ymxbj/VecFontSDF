@@ -1,8 +1,8 @@
 """Load a trained VecFontSDF and reconstruct a glyph image.
 
 Usage:
-    python3 -m VecFontSDF.inference \
-        --ckpt experiments/vecfontsdf_recon/checkpoints/latest.pth \
+    python3 inference.py \
+        --ckpt experiments/vecfontsdf/checkpoints/latest.pth \
         --input some_glyph.png \
         --out_dir ./recon_out
 """
@@ -17,9 +17,9 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.utils import save_image
 
-from .losses import build_grid, gamma_rasterize, pseudo_distance
-from .model import VecFontSDF
-from .options import get_recon_parser
+from losses import build_grid, gamma_rasterize, pseudo_distance
+from model import VecFontSDF
+from options import get_recon_parser
 
 
 def load_model(ckpt_path: str, device: torch.device,

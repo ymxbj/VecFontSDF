@@ -60,7 +60,7 @@ def get_recon_parser() -> argparse.ArgumentParser:
                    help='resume from a .pth checkpoint')
 
     # ---------------- logging / output ----------------
-    p.add_argument('--experiment_name', type=str, default='vecfontsdf_recon')
+    p.add_argument('--experiment_name', type=str, default='vecfontsdf')
     p.add_argument('--out_dir', type=str, default='./experiments')
     p.add_argument('--no_tboard', dest='tboard', action='store_false')
     p.set_defaults(tboard=True)

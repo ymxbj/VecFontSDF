@@ -20,7 +20,7 @@ If those two points coincide within `--curve_tol`, the cubic becomes
 for that glyph and the script reports it.
 
 Usage:
-    python -m VecFontSDF.data_prep.cubic_to_quadratic \
+    python3 data_prep/cubic_to_quadratic.py \
         --svg_root /path/to/cubic_svg \
         --out_root /path/to/quadratic_svg \
         --workers 8

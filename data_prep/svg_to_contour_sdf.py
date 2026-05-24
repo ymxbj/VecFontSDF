@@ -7,7 +7,7 @@ sampled uniformly by arc length along all contours and then jittered with
 uniform noise in [-1, 1] pixels.
 
 Usage:
-    python -m VecFontSDF.data_prep.svg_to_contour_sdf \
+    python3 data_prep/svg_to_contour_sdf.py \
         --svg_root  /path/to/svg \
         --out_root  /path/to/sdf \
         --num_points 4000 \
@@ -21,8 +21,8 @@ from typing import List, Tuple
 
 import numpy as np
 
-from .geometry import Pos
-from .glyph import Glyph
+from geometry import Pos
+from glyph import Glyph
 
 
 def sample_contour_sdf(glyph: Glyph, num_points: int,

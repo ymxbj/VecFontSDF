@@ -4,13 +4,13 @@
 
 **CVPR 2023**
 
-[Zeqing Xia](https://xiazeqing.github.io/)<sup>*</sup> &nbsp;·&nbsp;
-[Bojun Xiong](https://ymxbj.github.io/)<sup>*</sup> &nbsp;·&nbsp;
+[Zeqing Xia](https://xiazeqing.github.io/)<sup>\*</sup> &nbsp;·&nbsp;
+[Bojun Xiong](https://ymxbj.github.io/)<sup>\*</sup> &nbsp;·&nbsp;
 [Zhouhui Lian](https://www.icst.pku.edu.cn/zlian/)<sup>†</sup>
 
 Wangxuan Institute of Computer Technology, Peking University
 
-<sub><sup>*</sup> Equal contribution &nbsp;&nbsp; <sup>†</sup> Corresponding author</sub>
+<sub><sup>\*</sup> Equal contribution &nbsp;&nbsp; <sup>†</sup> Corresponding author</sub>
 
 [Project page](https://xiazeqing.github.io/VecFontSDF/) ·
 [arXiv](https://arxiv.org/abs/2303.12675)
@@ -121,19 +121,19 @@ cubic Bezier `C` segments, run the downgrade step first.
 
 ```bash
 # 0. (optional) downgrade cubic-Bezier SVGs to quadratic-only
-python3 -m VecFontSDF.data_prep.cubic_to_quadratic \
+python3 data_prep/cubic_to_quadratic.py \
     --svg_root /path/to/cubic_svg --out_root /path/to/quadratic_svg --workers 8
 
 # 1. rasterized glyph images (uses cairosvg)
-python3 -m VecFontSDF.data_prep.svg_to_png \
+python3 data_prep/svg_to_png.py \
     --svg_root /path/to/quadratic_svg --out_root ./data/img --image_size 128 --workers 8
 
 # 2. per-pixel grid SDF
-python3 -m VecFontSDF.data_prep.svg_to_grid_sdf \
+python3 data_prep/svg_to_grid_sdf.py \
     --svg_root /path/to/quadratic_svg --out_root ./data/sdf --image_size 128 --workers 8
 
 # 3. contour-aligned SDF samples (default 4000 points per glyph)
-python3 -m VecFontSDF.data_prep.svg_to_contour_sdf \
+python3 data_prep/svg_to_contour_sdf.py \
     --svg_root /path/to/quadratic_svg --out_root ./data/sdf --num_points 4000 --workers 8
 
 # 4. write the font id list
@@ -148,14 +148,14 @@ no output for the offending glyph and lists it at the end.
 ## Inference
 
 ```bash
-python3 -m VecFontSDF.inference \
-    --ckpt experiments/vecfontsdf_recon/checkpoints/latest.pth \
+python3 inference.py \
+    --ckpt experiments/vecfontsdf/checkpoints/latest.pth \
     --input some_glyph.png \
     --render_size 256 \
     --save_params
 ```
 
-Produces, in `experiments/vecfontsdf_recon/inference/`:
+Produces, in `experiments/vecfontsdf/inference/`:
 
 - `<stem>_recon.png` — input next to the reconstruction at `--render_size`.
 - `<stem>_params.npy` (with `--save_params`) — `[N_p * N_a, 6]` array of
@@ -167,17 +167,17 @@ in it are processed in a single pass.
 ## Training
 
 ```bash
-python3 -m VecFontSDF.train \
+python3 train.py \
     --img_path  /path/to/img \
     --sdf_path  /path/to/sdf \
     --font_list /path/to/font_list.txt \
     --train_split 1000 \
     --batch_size 64 --num_workers 8 \
     --n_iters 100000 \
-    --experiment_name vecfontsdf_recon
+    --experiment_name vecfontsdf
 ```
 
-Outputs land in `experiments/vecfontsdf_recon/`:
+Outputs land in `experiments/vecfontsdf/`:
 
 - `samples/` — periodic side-by-side comparisons of GT vs. reconstruction.
 - `checkpoints/` — `vecfontsdf_*.pth` snapshots and a rolling `latest.pth`.
@@ -185,7 +185,7 @@ Outputs land in `experiments/vecfontsdf_recon/`:
 - `opts.txt` — full dump of the run's hyperparameters; used by
   `inference.py` to restore the model architecture.
 
-Run `python3 -m VecFontSDF.train --help` for the full argument list (loss
+Run `python3 train.py --help` for the full argument list (loss
 weights, primitive count, optimizer hyperparameters, validation cadence,
 etc.).
 
@@ -193,15 +193,15 @@ To resume from a checkpoint, rerun the same training command with
 `--resume <path-to-ckpt>` appended:
 
 ```bash
-python3 -m VecFontSDF.train \
+python3 train.py \
     --img_path  /path/to/img \
     --sdf_path  /path/to/sdf \
     --font_list /path/to/font_list.txt \
     --train_split 1000 \
     --batch_size 64 --num_workers 8 \
     --n_iters 100000 \
-    --experiment_name vecfontsdf_recon \
-    --resume experiments/vecfontsdf_recon/checkpoints/latest.pth
+    --experiment_name vecfontsdf \
+    --resume experiments/vecfontsdf/checkpoints/latest.pth
 ```
 
 ## Release plan
