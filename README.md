@@ -292,7 +292,7 @@ python3 train.py \
 
 - [x] Training code
 - [x] Inference code
-- [x] Data preparation code (SVG → grid / contour SDF + raster PNG)
+- [x] SVG ↔ SDF conversion code (SVG → grid / contour SDF + raster PNG; predicted parabolic curves → quadratic Bézier SVG)
 - [x] Pre-trained checkpoints ([Google Drive](https://drive.google.com/file/d/1ozaQzSr9TC-dpOhmcOH2EzHjHYdfonrV/view?usp=sharing))
 - [ ] Training data
 
