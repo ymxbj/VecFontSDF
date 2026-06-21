@@ -60,14 +60,15 @@ def pseudo_distance(params: torch.Tensor, points: torch.Tensor,
 def build_grid(image_size: int, device) -> torch.Tensor:
     """Pixel-center grid flattened in row-major order.
 
-    Returns [H*W, 2]; the last dim is (x, y) = (col_norm, row_norm), both in
+    Returns [H*W, 2]; the last dim is (x, y) = (row_norm, col_norm), both in
     [-1, 1]. Row-major flat_idx = row * W + col matches the layout of a PIL +
-    ToTensor image after .view(-1).
+    ToTensor image after .view(-1). The (x=row, y=col) convention matches the
+    released checkpoints; do not swap it or reconstructions come out transposed.
     """
     rng = torch.arange(image_size, dtype=torch.float32, device=device)
-    rows, cols = torch.meshgrid(rng, rng, indexing='ij')   # rows = y, cols = x
-    xs = (cols + 0.5) / (image_size / 2) - 1.0
-    ys = (rows + 0.5) / (image_size / 2) - 1.0
+    rows, cols = torch.meshgrid(rng, rng, indexing='ij')   # rows = x, cols = y
+    xs = (rows + 0.5) / (image_size / 2) - 1.0
+    ys = (cols + 0.5) / (image_size / 2) - 1.0
     return torch.stack([xs, ys], dim=-1).reshape(-1, 2)
 
 
@@ -83,7 +84,7 @@ def compute_losses(params: torch.Tensor, image: torch.Tensor,
 
     Args:
         params:       [B, v*a, 6]
-        image:        [B, 3, H, W]  RGB raster, [0, 1] (collapsed to gray inside)
+        image:        [B, 1, H, W]  grayscale raster, [0, 1]
         grid_sdf:     [B, H, W]     ground-truth SDF in pixel units
         contour_sdf:  [B, M_c, 3]   each row = (x, y, signed_distance) in pixel
                                     units (x = column, y = row, both in [0, H];
@@ -99,20 +100,19 @@ def compute_losses(params: torch.Tensor, image: torch.Tensor,
 
     # Merge grid + contour points into a single batched forward.
     grid_pts = grid_coords.unsqueeze(0).expand(B, -1, -1)     # [B, H*W, 2]
+    # contour rows are (col, row, sdf); build_grid uses (x=row, y=col), so map
+    # x <- row coordinate (col index 1), y <- col coordinate (col index 0).
     contour_xy = torch.stack([
-        contour_sdf[..., 0] / (H / 2) - 1.0,                   # x
-        contour_sdf[..., 1] / (H / 2) - 1.0,                   # y
+        contour_sdf[..., 1] / (H / 2) - 1.0,                   # x = row
+        contour_sdf[..., 0] / (H / 2) - 1.0,                   # y = col
     ], dim=-1)                                                 # [B, M_c, 2]
     points = torch.cat([grid_pts, contour_xy], dim=1)          # [B, H*W + M_c, 2]
     g = pseudo_distance(params, points, opts.v_dim, opts.p_dim)
     g_grid, g_contour = g[:, :H * H], g[:, H * H:]             # [B, H*W], [B, M_c]
 
-    # Image reconstruction loss. Input is read as RGB so the 3-channel
-    # ResNet can consume it; the target glyph is grayscale, so collapse the
-    # RGB channels before comparing with the rasterized prediction.
+    # Image reconstruction loss. Both prediction and target are grayscale.
     img_pred = gamma_rasterize(g_grid, opts.gamma).view(B, 1, H, H)
-    img_gray = image.mean(dim=1, keepdim=True)
-    img_loss = F.mse_loss(img_pred, img_gray)
+    img_loss = F.mse_loss(img_pred, image)
 
     # Grid SDF loss: penalize sign disagreement between predicted and GT SDF
     # at every pixel center.

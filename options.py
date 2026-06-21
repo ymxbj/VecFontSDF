@@ -15,17 +15,17 @@ def get_recon_parser() -> argparse.ArgumentParser:
                    help='a python-eval-able list of integer font ids')
     p.add_argument('--train_split', type=int, default=1000,
                    help='first N fonts -> training, rest -> validation')
-    p.add_argument('--char_categories', type=int, default=62,
-                   help='total characters: 0-9 + A-Z + a-z = 62')
+    p.add_argument('--char_categories', type=int, default=52,
+                   help='number of glyph classes used for conditioning: '
+                        'A-Z + a-z = 52 (label = index in A..Z,a..z)')
     p.add_argument('--image_size', type=int, default=128)
     p.add_argument('--sdf_points_num', type=int, default=4000,
                    help='number of contour SDF sampling points per glyph')
 
     # ---------------- model ----------------
-    p.add_argument('--feat_dim', type=int, default=512,
-                   help='ResNet-18 image encoder output dim (default 512)')
     p.add_argument('--fc_channel', type=int, default=256,
-                   help='hidden dim inside the SDF decoder')
+                   help='hidden dim between the image+label feature and the '
+                        'curve-parameter head')
     p.add_argument('--v_dim', type=int, default=16,
                    help='number of shape primitives')
     p.add_argument('--p_dim', type=int, default=6,

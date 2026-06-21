@@ -1,1 +1,8 @@
 __pycache__
+.DS_Store
+
+# training / inference outputs and downloaded checkpoints
+experiments/
+
+# original (pre-release) research code, kept locally only
+conic16_6/

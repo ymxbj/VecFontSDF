@@ -9,9 +9,8 @@ from torchvision import transforms
 
 
 DEFAULT_CODEPOINTS: List[int] = (
-    list(range(48, 58))   # 0-9
-    + list(range(65, 91))   # A-Z
-    + list(range(97, 123))  # a-z
+    list(range(65, 91))     # A-Z  -> class labels 0..25
+    + list(range(97, 123))  # a-z  -> class labels 26..51
 )
 
 
@@ -30,7 +29,9 @@ class GlyphReconDataset(data.Dataset):
     glyph index 0..61 while SDF files are named by ASCII codepoint.
 
     Each sample is a dict:
-        image        [3, H, W]   raster glyph read as RGB, values in [0, 1]
+        image        [1, H, W]   raster glyph read as grayscale, values in [0, 1]
+        class        [C]         one-hot character label (C = char_categories);
+                                 the hot index equals glyph_idx
         grid_sdf     [H, W]      per-pixel signed distance, in (row, col) layout
                                  (positive outside the glyph, negative inside)
         contour_sdf  [M_c, 3]    each row = (x, y, signed_distance) in pixel
@@ -63,8 +64,8 @@ class GlyphReconDataset(data.Dataset):
 
         img = Image.open(
             os.path.join(self.img_root, font_str, f'{glyph_idx}.png')
-        ).convert('RGB')
-        img = self.transforms(img)  # [3, H, W] in [0, 1]
+        ).convert('L')
+        img = self.transforms(img)  # [1, H, W] in [0, 1]
 
         sdf_dir = os.path.join(self.sdf_root, font_str, 'sdf')
         grid_sdf = np.load(os.path.join(sdf_dir, f'{codepoint}_grid.npy'))
@@ -75,10 +76,15 @@ class GlyphReconDataset(data.Dataset):
         contour_sdf = np.load(os.path.join(sdf_dir, f'{codepoint}_contour.npy'))
         contour_sdf = torch.from_numpy(contour_sdf).float()  # [M_c, 3]
 
+        # glyph_idx (0..51) is also the conditioning class label.
+        clss = torch.zeros(len(self.codepoints), dtype=torch.float32)
+        clss[glyph_idx] = 1.0
+
         return {
             'image': img,
             'grid_sdf': grid_sdf,
             'contour_sdf': contour_sdf,
+            'class': clss,
             'glyph_idx': torch.tensor(glyph_idx, dtype=torch.long),
             'font_id': torch.tensor(font_id, dtype=torch.long),
         }

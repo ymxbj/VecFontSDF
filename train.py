@@ -57,7 +57,8 @@ def validate(model: nn.Module, val_loader, opts, grid_coords: torch.Tensor,
         img = batch['image'].to(device, non_blocking=True)
         grid_sdf = batch['grid_sdf'].to(device, non_blocking=True)
         contour_sdf = batch['contour_sdf'].to(device, non_blocking=True)
-        params = model(img)
+        clss = batch['class'].to(device, non_blocking=True)
+        params = model(img, clss)
         losses, _ = compute_losses(params, img, grid_sdf, contour_sdf,
                                    opts, grid_coords)
         bs = img.size(0)
@@ -86,8 +87,8 @@ def main():
     print(f'train samples: {len(train_loader.dataset)}, '
           f'val samples: {len(val_loader.dataset)}')
 
-    model = VecFontSDF(opts.feat_dim, opts.fc_channel,
-                       opts.v_dim, opts.p_dim).to(device)
+    model = VecFontSDF(opts.fc_channel, opts.v_dim, opts.p_dim,
+                       opts.char_categories).to(device)
     if opts.multi_gpu and torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=opts.lr,
@@ -118,8 +119,9 @@ def main():
         img = batch['image'].to(device, non_blocking=True)
         grid_sdf = batch['grid_sdf'].to(device, non_blocking=True)
         contour_sdf = batch['contour_sdf'].to(device, non_blocking=True)
+        clss = batch['class'].to(device, non_blocking=True)
 
-        params = model(img)
+        params = model(img, clss)
         losses, img_pred = compute_losses(params, img, grid_sdf, contour_sdf,
                                           opts, grid_coords)
 
@@ -146,10 +148,9 @@ def main():
 
         if step % opts.sample_every == 0:
             with torch.no_grad():
-                # img is RGB [B, 3, H, W], img_pred is gray [B, 1, H, W];
-                # collapse RGB to gray before stacking them along the height axis.
-                gt_gray = img.detach().mean(dim=1, keepdim=True)
-                pair = torch.cat([gt_gray, img_pred.detach()], dim=-2)
+                # img and img_pred are both grayscale [B, 1, H, W]; stack the
+                # ground truth above the reconstruction along the height axis.
+                pair = torch.cat([img.detach(), img_pred.detach()], dim=-2)
                 save_image(pair[:32],
                            os.path.join(sample_dir, f'step_{step:07d}.png'),
                            nrow=8, normalize=False)

@@ -1,14 +1,20 @@
 """Load a trained VecFontSDF and reconstruct a glyph image.
 
+The model is class-conditional, so every input glyph needs a character label
+(which letter it is). Supply it with --char for a single file, or name the files
+after the glyph (e.g. A.png, g.png, or the ASCII codepoint 65.png) for a
+directory.
+
 Usage:
     python3 inference.py \
         --ckpt experiments/vecfontsdf/checkpoints/latest.pth \
-        --input some_glyph.png \
-        --out_dir ./recon_out
+        --input some_glyph.png --char A \
+        --render_size 256 --save_params
 """
 
 import argparse
 import os
+import string
 from typing import Tuple
 
 import numpy as np
@@ -20,6 +26,31 @@ from torchvision.utils import save_image
 from losses import build_grid, gamma_rasterize, pseudo_distance
 from model import VecFontSDF
 from options import get_recon_parser
+from sdf2svg import params_to_svg
+
+
+# Class label ordering: A-Z -> 0..25, a-z -> 26..51. Index == one-hot hot index.
+LABEL_CHARS = string.ascii_uppercase + string.ascii_lowercase
+
+
+def char_to_label(ch: str) -> int:
+    if ch not in LABEL_CHARS:
+        raise ValueError(f'unsupported glyph {ch!r}; only A-Z and a-z are modeled')
+    return LABEL_CHARS.index(ch)
+
+
+def resolve_char(path: str, explicit: str) -> str:
+    """Figure out which character a glyph image represents."""
+    if explicit:
+        return explicit
+    stem = os.path.splitext(os.path.basename(path))[0]
+    if len(stem) == 1 and stem in LABEL_CHARS:
+        return stem
+    if stem.isdigit():                      # ASCII codepoint, e.g. 65 -> 'A'
+        return chr(int(stem))
+    raise ValueError(
+        f'cannot infer the character for {path!r}; pass --char or name the file '
+        f'like A.png / g.png / 65.png')
 
 
 def load_model(ckpt_path: str, device: torch.device,
@@ -43,8 +74,8 @@ def load_model(ckpt_path: str, device: torch.device,
                     except (TypeError, ValueError):
                         pass
 
-    model = VecFontSDF(opts.feat_dim, opts.fc_channel,
-                       opts.v_dim, opts.p_dim).to(device)
+    model = VecFontSDF(opts.fc_channel, opts.v_dim, opts.p_dim,
+                       opts.char_categories).to(device)
     ckpt = torch.load(ckpt_path, map_location=device)
     state = ckpt['model'] if isinstance(ckpt, dict) and 'model' in ckpt else ckpt
     model.load_state_dict(state)
@@ -62,12 +93,12 @@ def render_at(params: torch.Tensor, image_size: int, gamma: float,
 
 
 def load_image(path: str, image_size: int) -> torch.Tensor:
-    img = Image.open(path).convert('RGB')
+    img = Image.open(path).convert('L')
     tf = transforms.Compose([
         transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
     ])
-    return tf(img).unsqueeze(0)  # [1, 3, H, W]
+    return tf(img).unsqueeze(0)  # [1, 1, H, W]
 
 
 def main():
@@ -75,10 +106,17 @@ def main():
     cli.add_argument('--ckpt', type=str, required=True)
     cli.add_argument('--input', type=str, required=True,
                      help='path to a glyph image, or a directory of .png files')
+    cli.add_argument('--char', type=str, default=None,
+                     help='which character the input glyph is (A-Z / a-z); '
+                          'required for a single file unless inferable from its name')
     cli.add_argument('--render_size', type=int, default=None,
                      help='output resolution; defaults to the training image_size')
     cli.add_argument('--save_params', action='store_true',
                      help='also dump the (k,p,q,d,e,f) parabolic curve params as .npy')
+    cli.add_argument('--save_svg', action='store_true',
+                     help='also convert the predicted curves to a vector .svg glyph')
+    cli.add_argument('--svg_merge', type=float, default=0.02,
+                     help='endpoint-merge threshold for stitching SVG contours')
     opts = cli.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -96,25 +134,39 @@ def main():
         paths = [opts.input]
 
     for path in paths:
+        ch = resolve_char(path, opts.char)
+        label = char_to_label(ch)
+        clss = torch.zeros(1, opts.char_categories, device=device)
+        clss[0, label] = 1.0
+
         img = load_image(path, opts.image_size).to(device)
-        params = model(img)                                  # [1, v*a, 6]
+        params = model(img, clss)                            # [1, v*a, 6]
         recon = render_at(params, render_size, opts.gamma,
                           opts.v_dim, opts.p_dim, device)    # [1, 1, R, R]
 
         stem = os.path.splitext(os.path.basename(path))[0]
-        # Downsample the input back to render_size, collapse RGB to gray so the
-        # channel count matches the reconstruction, then concat side by side.
+        # Resize the input to render_size and concat side by side with the recon.
         gt_resized = torch.nn.functional.interpolate(
             img, size=render_size, mode='bilinear', align_corners=False)
-        gt_gray = gt_resized.mean(dim=1, keepdim=True)
-        pair = torch.cat([gt_gray, recon], dim=-1)
+        pair = torch.cat([gt_resized, recon], dim=-1)
         save_image(pair, os.path.join(out_dir, f'{stem}_recon.png'),
                    normalize=False)
-        print(f'[{stem}] -> {out_dir}/{stem}_recon.png')
+        print(f'[{stem}] char={ch!r} -> {out_dir}/{stem}_recon.png')
 
         if opts.save_params:
             np.save(os.path.join(out_dir, f'{stem}_params.npy'),
                     params[0].detach().cpu().numpy())
+
+        if opts.save_svg:
+            svg_path = os.path.join(out_dir, f'{stem}.svg')
+            try:
+                params_to_svg(params[0].detach().cpu().numpy(),
+                              opts.v_dim, opts.p_dim, svg_path, merge=opts.svg_merge)
+                print(f'         svg  -> {svg_path}')
+            except Exception as ex:
+                # The contour-stitching geometry has rare data-dependent failures;
+                # skip this glyph's SVG rather than aborting the whole run.
+                print(f'         svg  FAILED for {stem}: {type(ex).__name__}: {ex}')
 
 
 if __name__ == '__main__':

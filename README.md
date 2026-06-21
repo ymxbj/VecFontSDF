@@ -61,7 +61,7 @@ pip3 install -r requirements.txt
 VecFontSDF/
 ├── options.py     — command-line arguments
 ├── dataloader.py  — single-glyph dataset
-├── model.py       — ResNet-18 encoder + 2-layer SDF decoder
+├── model.py       — class-conditional ResNet encoder + curve-parameter head
 ├── losses.py      — pseudo distance field + differentiable rasterization + losses
 ├── train.py       — iteration-based training loop
 ├── inference.py   — load a checkpoint and reconstruct an image / directory
@@ -72,6 +72,11 @@ VecFontSDF/
 │   ├── svg_to_grid_sdf.py     — per-pixel grid SDF generator
 │   ├── svg_to_contour_sdf.py  — contour-aligned SDF sample generator
 │   └── svg_to_png.py          — SVG → raster PNG (uses cairosvg)
+├── sdf2svg/       — convert predicted parabolic curves to a vector SVG glyph
+│   ├── pos.py                 — 2D point primitive
+│   ├── lines.py               — straight-line / quadratic-Bezier curve classes
+│   ├── bspt.py                — parabolic-primitive mesh intersection / union
+│   └── outliner.py            — stitch boundary curves into clean filled contours
 └── README.md
 ```
 
@@ -85,22 +90,26 @@ data/
 ├── font_list.txt                a python-eval-able list of ints, e.g. [0, 1, 2, ...]
 ├── img/
 │   ├── 0000/                    font #0
-│   │   ├── 0.png                glyph index 0 (= ASCII '0')
-│   │   ├── 1.png                glyph index 1 (= ASCII '1')
-│   │   └── ...                  62 files total: 0-9 + A-Z + a-z
+│   │   ├── 0.png                glyph index 0 (= 'A')
+│   │   ├── 1.png                glyph index 1 (= 'B')
+│   │   └── ...                  52 files total: A-Z + a-z
 │   └── 0001/
 └── sdf/
     └── 0000/
         └── sdf/
-            ├── 48_grid.npy      [H, W] grid SDF for '0' (ASCII 48)
-            ├── 48_contour.npy   [M_c, 3] = (x, y, sdf) contour samples for '0'
+            ├── 65_grid.npy      [H, W] grid SDF for 'A' (ASCII 65)
+            ├── 65_contour.npy   [M_c, 3] = (x, y, sdf) contour samples for 'A'
             └── ...
 ```
 
+The model is **class-conditional** over the 52 letters `A-Z` then `a-z`; the
+glyph index `0..51` is exactly the conditioning class label (0 = 'A', 25 = 'Z',
+26 = 'a', 51 = 'z'). Digits are not modeled.
+
 Notes on the on-disk naming:
-- Image files are named by **glyph index 0..61** (`0.png`, `1.png`, ...).
-- SDF files are named by **ASCII codepoint** (`48_grid.npy` is `'0'`,
-  `65_grid.npy` is `'A'`, ...).
+- Image files are named by **glyph index 0..51** (`0.png`, `1.png`, ...).
+- SDF files are named by **ASCII codepoint** (`65_grid.npy` is `'A'`,
+  `97_grid.npy` is `'a'`, ...).
 - `grid.npy` is stored as `(col, row)` and is transposed by the dataloader
   to standard `(row, col)`. Positive values are outside the glyph, negative
   inside.
@@ -147,12 +156,40 @@ no output for the offending glyph and lists it at the end.
 
 ## Inference
 
+Download the pre-trained checkpoint from
+[Google Drive](https://drive.google.com/file/d/1ozaQzSr9TC-dpOhmcOH2EzHjHYdfonrV/view?usp=sharing)
+and place it under `experiments/vecfontsdf/checkpoints/`:
+
+```bash
+mkdir -p experiments/vecfontsdf/checkpoints
+gdown 1ozaQzSr9TC-dpOhmcOH2EzHjHYdfonrV \
+    -O experiments/vecfontsdf/checkpoints/VecFontSDF.pth
+```
+
+The resulting layout is:
+
+```
+experiments/vecfontsdf/
+└── checkpoints/
+    └── VecFontSDF.pth
+```
+
+The model hyperparameters default to this checkpoint's configuration
+(`char_categories=52`, `fc_channel=256`, `v_dim=16`, `p_dim=6`,
+`image_size=128`, `gamma=0.02`), so no `opts.txt` is required. If you point
+`--ckpt` at one of your own training runs, `inference.py` reads the architecture
+from the sibling `experiments/<name>/opts.txt` automatically.
+
+Because the model is class-conditional, every input glyph needs a character
+label. Pass it with `--char` for a single file, or name the files after the
+glyph (`A.png`, `g.png`, or the ASCII codepoint `65.png`) for a directory.
+
 ```bash
 python3 inference.py \
-    --ckpt experiments/vecfontsdf/checkpoints/latest.pth \
-    --input some_glyph.png \
+    --ckpt experiments/vecfontsdf/checkpoints/VecFontSDF.pth \
+    --input some_glyph.png --char A \
     --render_size 256 \
-    --save_params
+    --save_params --save_svg
 ```
 
 Produces, in `experiments/vecfontsdf/inference/`:
@@ -160,9 +197,56 @@ Produces, in `experiments/vecfontsdf/inference/`:
 - `<stem>_recon.png` — input next to the reconstruction at `--render_size`.
 - `<stem>_params.npy` (with `--save_params`) — `[N_p * N_a, 6]` array of
   parabolic curve parameters; the 6 columns are `(k, p, q, d, e, f)`.
+- `<stem>.svg` (with `--save_svg`) — the predicted curves stitched into a
+  vector glyph of connected quadratic-Bezier contours.
 
 `--input` may also be a directory, in which case all `.png` / `.jpg` files
-in it are processed in a single pass.
+in it are processed in a single pass (the character is inferred from each
+file name).
+
+### Vector SVG output
+
+`--save_svg` runs the `sdf2svg` package, which intersects/unions the predicted
+parabolic primitives and stitches the boundary into clean filled contours (the
+output carries a `matrix(0 1 1 0 0 0)` transform that maps the model's
+`(x=row, y=col)` parameter space back to upright screen coordinates). You can
+also call it directly:
+
+```python
+import numpy as np
+from sdf2svg import params_to_svg
+params = np.load('experiments/vecfontsdf/inference/A_params.npy')  # [v*p, 6]
+params_to_svg(params, v_dim=16, p_dim=6, out_path='A.svg', merge=0.02)
+```
+
+The contour-stitching solver has rare data-dependent failures on degenerate
+primitive configurations; `--save_svg` skips the affected glyph (with a warning)
+and continues.
+
+#### `--svg_merge` (endpoint-merge threshold)
+
+When the boundary curve segments are stitched into closed contours, two
+endpoints are treated as the same vertex — and welded together — when they lie
+within `--svg_merge` of each other. Concretely it controls three things in
+`cleanmesh_connect`: merging nearby endpoints into one vertex, dropping
+zero-length segments, and chaining a curve's end onto the next curve's start.
+
+- **Only matters with `--save_svg`.** Without it the SVG branch never runs, so
+  the value is ignored. The default `0.02` is fine for most glyphs; reach for
+  this knob only when a specific glyph comes out broken.
+- **Units:** the SVG `viewBox` spans 2 units across the glyph, so `0.02` is
+  about 1% of the glyph width.
+- **Tuning:** too small leaves contours that should connect open (broken fill);
+  too large welds distinct nearby features together (wrong topology, e.g. a
+  counter/hole disappearing).
+
+```bash
+# default merge (0.02)
+python3 inference.py --ckpt <ckpt> --input g.png --char g --save_svg
+
+# nudge the threshold when a glyph stitches poorly
+python3 inference.py --ckpt <ckpt> --input g.png --char g --save_svg --svg_merge 0.03
+```
 
 ## Training
 
@@ -209,7 +293,7 @@ python3 train.py \
 - [x] Training code
 - [x] Inference code
 - [x] Data preparation code (SVG → grid / contour SDF + raster PNG)
-- [ ] Pre-trained checkpoints
+- [x] Pre-trained checkpoints ([Google Drive](https://drive.google.com/file/d/1ozaQzSr9TC-dpOhmcOH2EzHjHYdfonrV/view?usp=sharing))
 - [ ] Training data
 
 ## Citation
