@@ -29,8 +29,8 @@ The official PyTorch implementation of the VecFontSDF paper. This paper proposes
 
 - [Installation](#installation)
 - [Repository structure](#repository-structure)
-- [Data preparation](#data-preparation)
 - [Inference](#inference)
+- [Data preparation](#data-preparation)
 - [Training](#training)
 - [Release plan](#release-plan)
 - [Citation](#citation)
@@ -79,80 +79,6 @@ VecFontSDF/
 │   └── outliner.py            — stitch boundary curves into clean filled contours
 └── README.md
 ```
-
-## Data preparation
-
-The training set is organized one directory per font, named with a 4-digit
-zero-padded integer id (e.g. `0123`):
-
-```
-data/
-├── font_list.txt                a python-eval-able list of ints, e.g. [0, 1, 2, ...]
-├── img/
-│   ├── 0000/                    font #0
-│   │   ├── 0.png                glyph index 0 (= 'A')
-│   │   ├── 1.png                glyph index 1 (= 'B')
-│   │   └── ...                  52 files total: A-Z + a-z
-│   └── 0001/
-└── sdf/
-    └── 0000/
-        └── sdf/
-            ├── 65_grid.npy      [H, W] grid SDF for 'A' (ASCII 65)
-            ├── 65_contour.npy   [M_c, 3] = (x, y, sdf) contour samples for 'A'
-            └── ...
-```
-
-The model is **class-conditional** over the 52 letters `A-Z` then `a-z`; the
-glyph index `0..51` is exactly the conditioning class label (0 = 'A', 25 = 'Z',
-26 = 'a', 51 = 'z'). Digits are not modeled.
-
-Notes on the on-disk naming:
-- Image files are named by **glyph index 0..51** (`0.png`, `1.png`, ...).
-- SDF files are named by **ASCII codepoint** (`65_grid.npy` is `'A'`,
-  `97_grid.npy` is `'a'`, ...).
-- `grid.npy` is stored as `(col, row)` and is transposed by the dataloader
-  to standard `(row, col)`. Positive values are outside the glyph, negative
-  inside.
-- `contour.npy` is a `(M_c, 3)` array; each row is
-  `(x, y, signed_distance)` in pixel units (`x` is the column coordinate
-  and `y` is the row coordinate, both in `[0, H]`).
-
-### Generating SDFs from raw SVG fonts
-
-If you start from a directory of SVG glyphs (one directory per font,
-filenames `<codepoint>.svg`), the helpers under `data_prep/` produce
-everything the dataloader expects. Each script auto-skips files that
-already exist, so they are safe to rerun.
-
-The SDF / dataloader pipeline only understands SVG path commands `M`, `L`,
-and `Q` (move, line, and quadratic Bezier). If your input SVGs contain
-cubic Bezier `C` segments, run the downgrade step first.
-
-```bash
-# 0. (optional) downgrade cubic-Bezier SVGs to quadratic-only
-python3 data_prep/cubic_to_quadratic.py \
-    --svg_root /path/to/cubic_svg --out_root /path/to/quadratic_svg --workers 8
-
-# 1. rasterized glyph images (uses cairosvg)
-python3 data_prep/svg_to_png.py \
-    --svg_root /path/to/quadratic_svg --out_root ./data/img --image_size 128 --workers 8
-
-# 2. per-pixel grid SDF
-python3 data_prep/svg_to_grid_sdf.py \
-    --svg_root /path/to/quadratic_svg --out_root ./data/sdf --image_size 128 --workers 8
-
-# 3. contour-aligned SDF samples (default 4000 points per glyph)
-python3 data_prep/svg_to_contour_sdf.py \
-    --svg_root /path/to/quadratic_svg --out_root ./data/sdf --num_points 4000 --workers 8
-
-# 4. write the font id list
-ls /path/to/quadratic_svg | python3 -c "import sys; print([int(x) for x in sys.stdin.read().split()])" > ./data/font_list.txt
-```
-
-Step 0 is a best-effort downgrade — a cubic that genuinely cannot be
-represented as a single quadratic (its left and right tangents do not
-meet at the same point) will be reported as a failure; the script writes
-no output for the offending glyph and lists it at the end.
 
 ## Inference
 
@@ -247,6 +173,80 @@ python3 inference.py --ckpt <ckpt> --input g.png --char g --save_svg
 # nudge the threshold when a glyph stitches poorly
 python3 inference.py --ckpt <ckpt> --input g.png --char g --save_svg --svg_merge 0.03
 ```
+
+## Data preparation
+
+The training set is organized one directory per font, named with a 4-digit
+zero-padded integer id (e.g. `0123`):
+
+```
+data/
+├── font_list.txt                a python-eval-able list of ints, e.g. [0, 1, 2, ...]
+├── img/
+│   ├── 0000/                    font #0
+│   │   ├── 0.png                glyph index 0 (= 'A')
+│   │   ├── 1.png                glyph index 1 (= 'B')
+│   │   └── ...                  52 files total: A-Z + a-z
+│   └── 0001/
+└── sdf/
+    └── 0000/
+        └── sdf/
+            ├── 65_grid.npy      [H, W] grid SDF for 'A' (ASCII 65)
+            ├── 65_contour.npy   [M_c, 3] = (x, y, sdf) contour samples for 'A'
+            └── ...
+```
+
+The model is **class-conditional** over the 52 letters `A-Z` then `a-z`; the
+glyph index `0..51` is exactly the conditioning class label (0 = 'A', 25 = 'Z',
+26 = 'a', 51 = 'z'). Digits are not modeled.
+
+Notes on the on-disk naming:
+- Image files are named by **glyph index 0..51** (`0.png`, `1.png`, ...).
+- SDF files are named by **ASCII codepoint** (`65_grid.npy` is `'A'`,
+  `97_grid.npy` is `'a'`, ...).
+- `grid.npy` is stored as `(col, row)` and is transposed by the dataloader
+  to standard `(row, col)`. Positive values are outside the glyph, negative
+  inside.
+- `contour.npy` is a `(M_c, 3)` array; each row is
+  `(x, y, signed_distance)` in pixel units (`x` is the column coordinate
+  and `y` is the row coordinate, both in `[0, H]`).
+
+### Generating SDFs from raw SVG fonts
+
+If you start from a directory of SVG glyphs (one directory per font,
+filenames `<codepoint>.svg`), the helpers under `data_prep/` produce
+everything the dataloader expects. Each script auto-skips files that
+already exist, so they are safe to rerun.
+
+The SDF / dataloader pipeline only understands SVG path commands `M`, `L`,
+and `Q` (move, line, and quadratic Bezier). If your input SVGs contain
+cubic Bezier `C` segments, run the downgrade step first.
+
+```bash
+# 0. (optional) downgrade cubic-Bezier SVGs to quadratic-only
+python3 data_prep/cubic_to_quadratic.py \
+    --svg_root /path/to/cubic_svg --out_root /path/to/quadratic_svg --workers 8
+
+# 1. rasterized glyph images (uses cairosvg)
+python3 data_prep/svg_to_png.py \
+    --svg_root /path/to/quadratic_svg --out_root ./data/img --image_size 128 --workers 8
+
+# 2. per-pixel grid SDF
+python3 data_prep/svg_to_grid_sdf.py \
+    --svg_root /path/to/quadratic_svg --out_root ./data/sdf --image_size 128 --workers 8
+
+# 3. contour-aligned SDF samples (default 4000 points per glyph)
+python3 data_prep/svg_to_contour_sdf.py \
+    --svg_root /path/to/quadratic_svg --out_root ./data/sdf --num_points 4000 --workers 8
+
+# 4. write the font id list
+ls /path/to/quadratic_svg | python3 -c "import sys; print([int(x) for x in sys.stdin.read().split()])" > ./data/font_list.txt
+```
+
+Step 0 is a best-effort downgrade — a cubic that genuinely cannot be
+represented as a single quadratic (its left and right tangents do not
+meet at the same point) will be reported as a failure; the script writes
+no output for the offending glyph and lists it at the end.
 
 ## Training
 
